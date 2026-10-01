@@ -1,0 +1,37 @@
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+events { worker_connections 4096; }
+http {
+  access_log off;
+  error_log /dev/stderr warn;
+  sendfile on; tcp_nodelay on; keepalive_timeout 75s;
+  client_max_body_size 0;
+  map $http_upgrade $conn_upgrade { default upgrade; '' close; }
+
+  server {
+    listen __PORT__ default_server;
+
+    location = /healthz { return 200 "ok"; }
+
+    # ---- 5 VLESS-WS inbounds (Railway terminates TLS on 443) ----
+    location = /ws/7a5a21d9-60f9-4542-943e-7838b90169e1 { proxy_pass http://127.0.0.1:10001; include /etc/nginx/ws.inc; }
+    location = /stream/4868e537-9fd8-46e9-b63a-f36459d18a81 { proxy_pass http://127.0.0.1:10002; include /etc/nginx/ws.inc; }
+    location = /live/b1dfa4cc-0ed6-4956-b330-8ccb51dc0828 { proxy_pass http://127.0.0.1:10003; include /etc/nginx/ws.inc; }
+    location = /gw/3d801b12-a333-452c-b9d5-90ece1a8d68c { proxy_pass http://127.0.0.1:10004; include /etc/nginx/ws.inc; }
+    location = /cdn/cc046fa3-78ec-4619-ac8f-9d6c7a5d0755 { proxy_pass http://127.0.0.1:10005; include /etc/nginx/ws.inc; }
+
+    # ---- panel / dashboard / api / subscription ----
+    location / {
+      proxy_pass http://127.0.0.1:8000;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto https;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection $conn_upgrade;
+      proxy_read_timeout 300s;
+    }
+  }
+}
